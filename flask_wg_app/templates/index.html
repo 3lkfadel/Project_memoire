@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>WireGuard Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <h1>WireGuard — wg0</h1>
+
+  <!-- Graphe trafic -->
+  <canvas id="chart" width="900" height="240" style="max-width:100%;margin:8px 0 16px;"></canvas>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash">
+        {% for category, message in messages %}
+          <div class="flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="controls">
+    {% if running %}
+      <span class="state on">État : ACTIF</span>
+      <a class="btn" href="/restart">Redémarrer wg0</a>
+      <a class="btn danger" href="/stop">Arrêter wg0</a>
+    {% else %}
+      <span class="state off">État : INACTIF</span>
+      <a class="btn primary" href="/start">Démarrer wg0</a>
+    {% endif %}
+  </div>
+
+  <div style="margin:10px 0 0;">
+    <a class="btn primary" href="/peers/new">Ajouter un peer</a>
+  </div>
+
+  <h2>Peers</h2>
+  {% if running and peers %}
+    <div class="table">
+      <div class="row head">
+        <div>Clé publique</div>
+        <div>Endpoint</div>
+        <div>Allowed IPs</div>
+        <div>Dernier handshake</div>
+        <div>RX</div>
+        <div>TX</div>
+        <div>Keepalive</div>
+        <div>Actions</div>
+      </div>
+      {% for p in peers %}
+      <div class="row">
+        <div class="mono">{{ p.public_key }}</div>
+        <div>{{ p.endpoint }}</div>
+        <div class="mono">{{ p.allowed_ips }}</div>
+        <div>{{ p.latest_handshake }}</div>
+        <div>{{ p.transfer_rx }}</div>
+        <div>{{ p.transfer_tx }}</div>
+        <div>{{ p.keepalive }}</div>
+        <div>
+          <form method="post" action="/peers/delete" onsubmit="return confirm('Supprimer ce peer ?');">
+            <input type="hidden" name="public_key" value="{{ p.public_key }}">
+            <button class="btn danger" type="submit">Supprimer</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p>Aucun peer (ou interface arrêtée).</p>
+  {% endif %}
+
+  <h2>Sortie de <code>wg show</code></h2>
+  <pre class="panel">{{ status }}</pre>
+
+  <!-- Script du graphe (bytes/s) -->
+  <canvas id="chart" width="900" height="240" style="max-width:100%;margin:8px 0 16px;"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const ctx = document.getElementById('chart').getContext('2d');
+let last = null;
+const labels = [], dataRX = [], dataTX = [];
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: { labels, datasets: [
+    { label: 'RX (bytes/s)', data: dataRX },
+    { label: 'TX (bytes/s)', data: dataTX }
+  ]},
+  options: { animation:false, responsive:true, scales:{ y:{ beginAtZero:true } } }
+});
+
+async function tick(){
+  try {
+    const r = await fetch('/metrics.json');
+    if (!r.ok) return;
+    const j = await r.json(); // {ts, rx, tx} cumulés
+    if (last){
+      const dt = j.ts - last.ts; if (dt <= 0) return;
+      const rxps = Math.max(0, (j.rx - last.rx) / dt);
+      const txps = Math.max(0, (j.tx - last.tx) / dt);
+      const t = new Date(j.ts * 1000).toLocaleTimeString();
+      labels.push(t); dataRX.push(rxps); dataTX.push(txps);
+      if (labels.length > 60){ labels.shift(); dataRX.shift(); dataTX.shift(); }
+      chart.update();
+    }
+    last = j;
+  } catch(e) { /* ignore */ }
+}
+setInterval(tick, 1000);
+</script>
+
+</body>
+</html>

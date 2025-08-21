@@ -1,0 +1,18 @@
+{% extends "layout.html" %}
+{% set active_tab = 'server' %}
+
+{% block content %}
+  <div class="panel-head">
+    <div class="actions">
+      <a class="btn" href="{{ url_for('server_settings_page') }}">← Retour</a>
+    </div>
+  </div>
+
+  <h2 class="h2">Restaurer un backup wg0.conf</h2>
+  <p>Chemin exemple : <code>/etc/wireguard/wg0.conf.bak</code></p>
+  <form method="post" class="form">
+    <label>Chemin du backup</label>
+    <input name="backup_path" placeholder="/etc/wireguard/wg0.conf.bak" required>
+    <button class="btn danger" type="submit">Restaurer</button>
+  </form>
+{% endblock %}

@@ -1,0 +1,153 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="panel">
+  <div class="panel-head">
+    <h2>Console distante (SSH)</h2>
+    <p class="muted">Ouvre une session shell sur un serveur autorisé. Tout ce que tu tapes est exécuté comme dans un terminal.</p>
+  </div>
+
+  <div class="card">
+    <div class="form-grid">
+      <label>Hôte
+        <select id="host">
+          {% for h in allow_hosts %}
+          <option value="{{ h }}">{{ h }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Port
+        <input id="port" type="number" min="1" max="65535" value="22">
+      </label>
+      <label>Utilisateur
+        <input id="user" type="text" placeholder="ubuntu" />
+      </label>
+      <label>Mot de passe (optionnel si clé)
+        <input id="password" type="password" autocomplete="new-password" />
+      </label>
+    </div>
+
+    <details style="margin:10px 0;">
+      <summary>Authentification par clé privée (optionnel)</summary>
+      <textarea id="pkey" class="mono" rows="6" placeholder="Colle ici ta clé privée OpenSSH (RSA/ECDSA/Ed25519)"></textarea>
+      <div class="form-row">
+        <input id="passphrase" type="password" placeholder="Passphrase (si clé chiffrée)">
+      </div>
+    </details>
+
+    <div class="btn-row">
+      <button id="btn-connect" class="btn primary">Se connecter</button>
+      <button id="btn-disconnect" class="btn">Se déconnecter</button>
+      <span id="status" class="chip">Hors ligne</span>
+    </div>
+
+    <div id="terminal" style="height:520px; width:100%; background:#0b1020; border-radius:16px; margin-top:10px;"></div>
+  </div>
+</div>
+
+<!-- Socket.IO + xterm.js (CDN) -->
+<script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.7.0/lib/xterm-addon-web-links.min.js"></script>
+
+<script>
+(function(){
+  const term = new Terminal({
+    convertEol: true,
+    cursorBlink: true,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
+    theme: { background: '#0b1020' }
+  });
+  const fit = new FitAddon.FitAddon();
+  const links = new WebLinksAddon.WebLinksAddon();
+  term.loadAddon(fit);
+  term.loadAddon(links);
+  term.open(document.getElementById('terminal'));
+  fit.fit();
+
+  let socket = null;
+  let ready = false;
+
+  function setStatus(txt, cls=''){
+    const el = document.getElementById('status');
+    el.textContent = txt;
+    el.className = 'chip ' + cls;
+  }
+
+  function connect(){
+    if (socket) { try { socket.disconnect(); } catch(e){} socket = null; }
+
+    socket = io("/tty", { transports: ["websocket"] });
+    setStatus("Connexion…","");
+
+    socket.on("connect", ()=>{
+      setStatus("Connecté (WS)","on");
+      // demande la connexion SSH
+      const payload = {
+        host: document.getElementById('host').value.trim(),
+        port: document.getElementById('port').value.trim(),
+        user: document.getElementById('user').value.trim(),
+        password: document.getElementById('password').value,
+        pkey: document.getElementById('pkey').value || null,
+        passphrase: document.getElementById('passphrase').value || null,
+        cols: term.cols, rows: term.rows
+      };
+      socket.emit("connect_ssh", payload);
+    });
+
+    socket.on("status", (st)=>{
+      if (st.state === "ready"){
+        ready = true;
+        setStatus("SSH prêt","on");
+        term.focus();
+      } else if (st.state === "error"){
+        setStatus("Erreur: " + st.msg, "off");
+      } else if (st.state === "closed"){
+        setStatus("Fermé","off");
+        ready = false;
+      }
+    });
+
+    socket.on("stdout", (data)=>{
+      term.write(data);
+    });
+
+    socket.on("disconnect", ()=>{
+      setStatus("WS déconnecté","off");
+      ready = false;
+    });
+  }
+
+  // Envoi des touches au serveur
+  term.onData(data=>{
+    if (socket && ready){
+      socket.emit("stdin", data);
+    }
+  });
+
+  // Resize → notifie le serveur
+  window.addEventListener('resize', ()=>{
+    fit.fit();
+    if (socket && ready){
+      socket.emit("resize", { cols: term.cols, rows: term.rows });
+    }
+  });
+
+  document.getElementById('btn-connect').addEventListener('click', connect);
+  document.getElementById('btn-disconnect').addEventListener('click', ()=>{
+    if (socket){
+      socket.emit("disconnect_ssh");
+      socket.disconnect();
+      socket = null;
+      setStatus("Fermé","off");
+    }
+  });
+
+  // message d’accueil
+  term.writeln("\x1b[1;36mWG Dash — Console SSH\x1b[0m");
+  term.writeln("Sélectionne l'hôte, identifie-toi puis clique sur 'Se connecter'.");
+})();
+</script>
+{% endblock %}

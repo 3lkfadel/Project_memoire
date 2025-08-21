@@ -1,0 +1,42 @@
+{% extends "layout.html" %}
+{% set active_tab = 'server' %}
+
+{% block content %}
+  <div class="panel-head">
+    <div class="actions">
+      {% if running %}
+        <a class="btn ring" data-action="hit" data-url="{{ url_for('stop') }}">● Éteindre</a>
+        <a class="btn ghost" data-action="hit" data-url="{{ url_for('restart') }}">↻ Redémarrer</a>
+      {% else %}
+        <a class="btn primary ring" data-action="hit" data-url="{{ url_for('start') }}">● Démarrer</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <h2 class="h2">Réglages serveur</h2>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Port d’écoute</h3>
+      <p>Actuel : <b>{{ info.listen_port if info else '—' }}</b></p>
+      <form method="post">
+        <input type="number" name="port" min="1" max="65535" placeholder="51820" required>
+        <button class="btn" type="submit">Changer</button>
+      </form>
+    </div>
+
+    <div class="card danger">
+      <h3>Rotation des clés</h3>
+      <p><b>Attention :</b> cela change la clé publique du serveur. Tous les clients doivent mettre à jour leur conf.</p>
+      <form method="post" onsubmit="return confirm('Confirmer la rotation des clés serveur ?');">
+        <input type="hidden" name="rotate_keys" value="1">
+        <button class="btn danger" type="submit">Régénérer les clés</button>
+      </form>
+    </div>
+  </div>
+
+  <h2 class="h2" style="margin-top:18px;">Configuration</h2>
+  <div class="card">
+    <a class="btn" href="{{ url_for('server_conf_download') }}">⬇ Télécharger wg0.conf</a>
+    <a class="btn" href="{{ url_for('server_restore') }}">↩ Restaurer un backup</a>
+  </div>
+{% endblock %}

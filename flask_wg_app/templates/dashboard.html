@@ -1,0 +1,112 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="grid-2">
+  <!-- Hero / Graph card -->
+  
+    
+  <!-- Compact system summary -->
+  <aside class="summary">
+    <div class="summary-head">
+      <h3>Résumé système</h3>
+      <div class="actions">
+        {% if running %}
+        <a class="btn ghost" href="{{ url_for('stop') }}">Éteindre</a>
+        {% else %}
+        <a class="btn ghost" href="{{ url_for('start') }}">Démarrer</a>
+        {% endif %}
+        <a class="btn ghost" href="{{ url_for('restart') }}">↻ Redémarrer</a>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi">
+        <div class="kpi-label">Interface</div>
+        <div class="kpi-value">wg0</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Clé publique</div>
+        <div class="kpi-value mono">
+          {% if server %}{{ server.public_key[:10] }}…{{ server.public_key[-6:] }}{% else %}?{% endif %}
+        </div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Port d’écoute</div>
+        <div class="kpi-value">{{ server.listen_port if server else '?' }}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Peers actifs</div>
+        <div class="kpi-value">{{ peers|length }}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Dernier handshake</div>
+        <div class="kpi-value">
+          {% if peers and peers[0].latest_handshake != 'Never' %}
+            {{ peers[0].latest_handshake }}
+          {% else %}—{% endif %}
+        </div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Total RX / TX</div>
+        <div class="kpi-value">
+          {{ peers|map(attribute='transfer_rx')|list|join(' + ') if peers else '0 B' }}
+          /
+          {{ peers|map(attribute='transfer_tx')|list|join(' + ') if peers else '0 B' }}
+        </div>
+      </div>
+    </div>
+
+    <p class="hint">
+      Les détails complets (wg show, logs) sont disponibles dans l’onglet <strong>Journal</strong>.
+    </p>
+  </aside>
+</div>
+
+<!-- Chart script (same endpoint, bigger canvas + smoothing) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+(function(){
+  const el = document.getElementById('chart').getContext('2d');
+  let last = null;
+  const labels = [], rx = [], tx = [];
+  const chart = new Chart(el, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'RX (B/s)', data: rx, tension: 0.35, fill: true },
+        { label: 'TX (B/s)', data: tx, tension: 0.35, fill: true }
+      ]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      plugins: { legend: { display: true } },
+      scales: {
+        y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,.15)' } },
+        x: { ticks: { maxRotation: 0 }, grid: { display:false } }
+      }
+    }
+  });
+
+  async function tick(){
+    try{
+      const r = await fetch('{{ url_for("metrics") }}');
+      if(!r.ok) return;
+      const j = await r.json(); // {ts, rx, tx} cumulés
+      if(last){
+        const dt = Math.max(1, j.ts - last.ts);
+        const rxps = Math.max(0, (j.rx - last.rx) / dt);
+        const txps = Math.max(0, (j.tx - last.tx) / dt);
+        const t = new Date(j.ts * 1000).toLocaleTimeString();
+        labels.push(t); rx.push(rxps); tx.push(txps);
+        if(labels.length > 120){ labels.shift(); rx.shift(); tx.shift(); }
+        chart.update();
+      }
+      last = j;
+    }catch(e){}
+  }
+  setInterval(tick, 1000);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>WG Dash</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="app">
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="brand">
+      <img src="{{ url_for('static', filename='logo.svg') }}" alt="WG" />
+      <span>WG Dash</span>
+    </div>
+    <nav class="tabs">
+      <a href="{{ url_for('home') }}" class="{{ 'active' if active_tab=='dashboard' else '' }}">Tableau de bord</a>
+      <a href="{{ url_for('peers_page') }}" class="{{ 'active' if active_tab=='peers' else '' }}">Peers</a>
+      <a href="{{ url_for('server_settings_page') }}" class="{{ 'active' if active_tab=='server' else '' }}">Serveur</a>
+      <a href="{{ url_for('logs_page') }}" class="{{ 'active' if active_tab=='logs' else '' }}">Journal</a>
+      <a class="{{ 'active' if active_tab=='terminal' else '' }}" href="{{ url_for('terminal_page') }}">Console</a> 
+      <a href="{{ url_for('status_page') }}" class="{{ 'active' if active_tab=='status' else '' }}">État</a>
+    </nav>
+  </header>
+
+  <!-- Grille 2 colonnes -->
+  <main class="grid">
+    <!-- Colonne gauche : panneau violet (graphe seulement) -->
+    <aside class="hero-card">
+      <div class="hero-head">
+        <div>
+          <h1>WireGuard — wg0</h1>
+          <div class="hero-sub">Tableau temps réel du trafic</div>
+        </div>
+        <span class="badge {{ 'on' if running else 'off' }}">{{ 'ACTIF' if running else 'INACTIF' }}</span>
+      </div>
+
+      <div class="kpis">
+        <div class="chip">Peers actifs : <strong>{{ peers|length if running else 0 }}</strong></div>
+        <div class="chip">Port : <strong>{{ (server.listen_port if server else '—') }}</strong></div>
+        <div class="chip">Handshake : <strong>
+          {% set any_hs = (peers|selectattr('latest_handshake','ne','Never')|list)|length > 0 %}
+          {{ 'OK' if running and any_hs else '—' }}
+        </strong></div>
+      </div>
+
+      <canvas id="trafficChart" width="800" height="380"></canvas>
+      <script>
+        window.__WG_CHART__ = { metricsUrl: "{{ url_for('metrics') }}" };
+      </script>
+    </aside>
+
+    <!-- Colonne droite : contenu de l’onglet -->
+    <section class="panel">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash">
+            {% for category, message in messages %}
+              <div class="flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </section>
+  </main>
+</body>
+</html>

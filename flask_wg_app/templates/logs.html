@@ -1,0 +1,208 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="card audit">
+  <div class="audit-head">
+    <div>
+      <h2>Journal / Audit</h2>
+      <p class="muted">Événements WireGuard & système, formatés pour lecture rapide.</p>
+    </div>
+    <div class="actions">
+      <a class="btn ghost" href="{{ url_for('restart') }}">↻ Redémarrer wg0</a>
+    </div>
+  </div>
+
+  <div class="audit-toolbar">
+    <div class="pill-group">
+      <button class="pill is-active" data-source="systemd">Service (systemd)</button>
+      <button class="pill" data-source="wg">WireGuard</button>
+      <button class="pill" data-source="kernel">Kernel</button>
+    </div>
+
+    <div class="input icon-left">
+      <svg viewBox="0 0 24 24" class="icon"><path d="M21 21l-4.3-4.3M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z"/></svg>
+      <input id="q" type="search" placeholder="Rechercher (peer pubkey, port, erreur…)">
+    </div>
+
+    <div class="select">
+      <select id="lines">
+        <option value="200">200 lignes</option>
+        <option value="500">500 lignes</option>
+        <option value="1000">1000 lignes</option>
+      </select>
+    </div>
+
+    <label class="chk">
+      <input id="live" type="checkbox"> Live
+    </label>
+
+    <button class="btn" id="export">Exporter</button>
+  </div>
+
+  <div class="audit-table-wrap">
+    <table class="audit-table">
+      <thead>
+        <tr>
+          <th style="width:180px">Horodatage</th>
+          <th style="width:110px">Source</th>
+          <th style="width:110px">Type</th>
+          <th>Message</th>
+          <th style="width:130px">Acteur / IP</th>
+        </tr>
+      </thead>
+      <tbody id="rows">
+        <!-- lignes injectées -->
+      </tbody>
+    </table>
+  </div>
+
+  <div class="audit-foot">
+    <div id="count">0 événement</div>
+    <div class="pager">
+      <button class="btn ghost" id="prev" disabled>◀</button>
+      <span id="page">1 / 1</span>
+      <button class="btn ghost" id="next" disabled>▶</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const rowsEl = document.getElementById('rows');
+  const qEl    = document.getElementById('q');
+  const linesEl= document.getElementById('lines');
+  const liveEl = document.getElementById('live');
+  const pills  = [...document.querySelectorAll('.pill')];
+  const countEl= document.getElementById('count');
+  const pageEl = document.getElementById('page');
+  const prevEl = document.getElementById('prev');
+  const nextEl = document.getElementById('next');
+  const exportBtn = document.getElementById('export');
+
+  let source = 'systemd';
+  let allItems = []; // objets parsés
+  let page = 1, perPage = 50, pages = 1;
+  let es = null; // EventSource
+
+  function setActivePill() {
+    pills.forEach(p => p.classList.toggle('is-active', p.dataset.source === source));
+  }
+
+  function badge(type){
+    const cls = {
+      ok: 'ok', info:'info', warn:'warn', error:'error',
+      create:'ok', update:'info', delete:'error', start:'ok', stop:'warn'
+    }[type] || 'info';
+    return `<span class="badge ${cls}">${type.toUpperCase()}</span>`;
+  }
+
+  // --- Parsers très tolérants (heuristiques) ---
+  const reTime = /^[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}/; // "Aug 18 18:12:34"
+  function parseSystemd(line){
+    // ex: "Aug 18 09:16:02 ubuntu systemd[1]: Started WireGuard via wg-quick(8) for wg0."
+    const ts = (line.match(reTime)||[''])[0];
+    let msg = line.split(': ').slice(1).join(': ') || line;
+    let type='info', actor='';
+    if (/Started WireGuard|interface is up/i.test(msg)) type='start';
+    else if (/Stopped WireGuard|Deactivated/i.test(msg)) type='stop';
+    else if (/Failed|error|cannot|denied/i.test(msg)) type='error';
+    else if (/peer|handshake/i.test(msg)) type='update';
+    const ip = msg.match(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/);
+    if (ip) actor = ip[0];
+    return { ts, src:'systemd', type, msg, actor };
+  }
+  function parseKernel(line){
+    // "Aug 18 18:12:34 kernel: [..] wireguard: ..."
+    const ts = (line.match(reTime)||[''])[0];
+    let msg = line.replace(/^.*?:\s*/,'');
+    let type='info', actor='';
+    if (/handshake|Receiving keepalive/i.test(msg)) type='update';
+    else if (/error|invalid/i.test(msg)) type='error';
+    const ip = msg.match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/);
+    if (ip) actor = ip[0];
+    return { ts, src:'kernel', type, msg, actor };
+  }
+  function parseWG(line){
+    // dump wg show => on en fera une ligne par peer
+    const ts = new Date().toLocaleString();
+    return { ts, src:'wg', type:'info', msg: line, actor:'' };
+  }
+
+  function render(){
+    // pagination
+    pages = Math.max(1, Math.ceil(allItems.length / perPage));
+    if (page > pages) page = pages;
+    const start = (page-1)*perPage, end = start+perPage;
+    const slice = allItems.slice(start, end);
+
+    rowsEl.innerHTML = slice.map(it => `
+      <tr>
+        <td class="mono">${it.ts || ''}</td>
+        <td><span class="tag ${it.src}">${it.src}</span></td>
+        <td>${badge(it.type)}</td>
+        <td>${escapeHtml(it.msg)}</td>
+        <td class="mono">${it.actor||''}</td>
+      </tr>
+    `).join('');
+
+    countEl.textContent = `${allItems.length} événement${allItems.length>1?'s':''}`;
+    pageEl.textContent = `${page} / ${pages}`;
+    prevEl.disabled = (page<=1);
+    nextEl.disabled = (page>=pages);
+  }
+
+  function escapeHtml(s){ return (s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+  async function loadOnce(){
+    if (es) { es.close(); es=null; }
+    const r = await fetch(`/logs/api?source=${source}&lines=${encodeURIComponent(linesEl.value)}&q=${encodeURIComponent(qEl.value.trim())}`);
+    const text = await r.text();
+    const lines = text.split(/\r?\n/).filter(Boolean);
+
+    if (source==='systemd') allItems = lines.map(parseSystemd);
+    else if (source==='kernel') allItems = lines.map(parseKernel);
+    else allItems = lines.map(parseWG);
+
+    page = 1; render();
+  }
+
+  function startLive(){
+    if (es) es.close();
+    es = new EventSource(`/logs/stream?source=${source}`);
+    es.onmessage = (evt) => {
+      const line = evt.data;
+      if (!line) return;
+      let obj = (source==='systemd') ? parseSystemd(line)
+              : (source==='kernel') ? parseKernel(line)
+              : parseWG(line);
+      if (qEl.value && !line.toLowerCase().includes(qEl.value.toLowerCase())) return;
+      allItems.unshift(obj);
+      if (allItems.length > 1000) allItems.pop();
+      render();
+    };
+  }
+
+  // events
+  pills.forEach(p => p.addEventListener('click', () => {
+    source = p.dataset.source; setActivePill();
+    liveEl.checked ? startLive() : loadOnce();
+  }));
+  qEl.addEventListener('input', () => liveEl.checked ? null : loadOnce());
+  linesEl.addEventListener('change', () => liveEl.checked ? null : loadOnce());
+  liveEl.addEventListener('change', () => liveEl.checked ? startLive() : loadOnce());
+  prevEl.addEventListener('click', () => { if(page>1){ page--; render(); } });
+  nextEl.addEventListener('click', () => { if(page<pages){ page++; render(); } });
+  exportBtn.addEventListener('click', () => {
+    const csv = ['timestamp,source,type,message,actor'].concat(
+      allItems.map(i => `"${(i.ts||'').replace(/"/g,'""')}","${i.src}","${i.type}","${(i.msg||'').replace(/"/g,'""')}","${i.actor||''}"`)
+    ).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const a = Object.assign(document.createElement('a'), {href:URL.createObjectURL(blob), download:`audit_${source}.csv`});
+    a.click(); URL.revokeObjectURL(a.href);
+  });
+
+  setActivePill();
+  loadOnce();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "layout.html" %}
+{% set active_tab = 'peers' %}
+
+{% block content %}
+  <div class="panel-head">
+    <div class="actions">
+      <a class="btn" href="{{ url_for('peers_page') }}">← Retour</a>
+    </div>
+  </div>
+
+  <h2 class="h2">Ajouter un peer</h2>
+  <form method="post" class="form">
+    <label>Allowed IPs (ex: 10.200.0.10/32)</label>
+    <input name="allowed_ips" placeholder="10.200.0.10/32" required>
+
+    <label>Persistent Keepalive (sec)</label>
+    <input name="keepalive" placeholder="25">
+
+    <button class="btn primary" type="submit">Créer et télécharger la conf</button>
+  </form>
+{% endblock %}

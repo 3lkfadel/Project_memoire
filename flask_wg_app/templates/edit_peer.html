@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+{% set active_tab = 'peers' %}
+
+{% block content %}
+  <div class="panel-head">
+    <div class="actions">
+      <a class="btn" href="{{ url_for('peers_page') }}">← Retour</a>
+    </div>
+  </div>
+
+  <h2 class="h2">Modifier le peer</h2>
+  <p><b>PublicKey :</b> <span class="mono">{{ peer.public_key }}</span></p>
+
+  <form method="post" action="{{ url_for('peers_update') }}" class="form">
+    <input type="hidden" name="public_key" value="{{ peer.public_key }}">
+
+    <label>Allowed IPs (ex: 10.200.0.10/32)</label>
+    <input name="allowed_ips" value="{{ peer.allowed_ips }}" placeholder="10.200.0.10/32">
+
+    <label>Persistent Keepalive (sec)</label>
+    <input name="keepalive" value="{{ peer.keepalive }}" placeholder="25">
+
+    <label>Endpoint (host:port) — vide pour supprimer</label>
+    <input name="endpoint" value="{{ peer.endpoint }}" placeholder="203.0.113.10:51820">
+
+    <button class="btn primary" type="submit">Enregistrer</button>
+  </form>
+{% endblock %}

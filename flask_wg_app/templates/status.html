@@ -1,0 +1,147 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="grid-2">
+  <!-- Colonne gauche : panneau violet avec mini-graphiques -->
+  <section class="hero">
+    <div class="hero-head">
+      <div>
+        <h2>État du serveur</h2>
+        <p class="muted">Ressources en temps réel (CPU / RAM / Disque / Uptime)</p>
+      </div>
+      <span class="badge {{ 'on' if running else 'off' }}">{{ 'ACTIF' if running else 'INACTIF' }}</span>
+    </div>
+
+    <div class="chips">
+      <span class="chip">Hôte : <span id="st-host">—</span></span>
+      <span class="chip">Kernel : <span id="st-kernel">—</span></span>
+      <span class="chip">IP(s) : <span id="st-ips">—</span></span>
+    </div>
+
+    <div class="kpis kpis-3">
+      <div class="kpi">
+        <div class="kpi-label">CPU</div>
+        <div class="kpi-value"><span id="st-cpu">0</span>%</div>
+        <canvas id="chartCpu" height="70"></canvas>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Mémoire</div>
+        <div class="kpi-value"><span id="st-mem">0</span>%</div>
+        <canvas id="chartMem" height="70"></canvas>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Disque (/)</div>
+        <div class="kpi-value"><span id="st-disk">0</span>%</div>
+        <canvas id="chartDisk" height="70"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- Colonne droite : résumé compact + uptime -->
+  <aside class="summary">
+    <div class="summary-head">
+      <h3>Résumé système</h3>
+      <div class="actions">
+        {% if running %}
+          <a class="btn ghost" href="{{ url_for('stop') }}">Éteindre</a>
+        {% else %}
+          <a class="btn ghost" href="{{ url_for('start') }}">Démarrer</a>
+        {% endif %}
+        <a class="btn ghost" href="{{ url_for('restart') }}">↻ Redémarrer</a>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi">
+        <div class="kpi-label">Uptime</div>
+        <div class="kpi-value" id="st-uptime">—</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">RAM</div>
+        <div class="kpi-value mono" id="st-mem-bytes">—</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Disque</div>
+        <div class="kpi-value mono" id="st-disk-bytes">—</div>
+      </div>
+    </div>
+
+    <p class="hint">
+      Les métriques se mettent à jour automatiquement toutes les 2 secondes.
+    </p>
+  </aside>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+(function(){
+  const fmtBytes = (n) => {
+    const units = ["B","KiB","MiB","GiB","TiB"];
+    let i=0, v = Number(n);
+    while (v >= 1024 && i < units.length-1) { v/=1024; i++; }
+    return v.toFixed(1) + " " + units[i];
+  };
+
+  const mkSpark = (elId, label) => {
+    const ctx = document.getElementById(elId).getContext('2d');
+    const labels = [], data = [];
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets: [{ label, data, tension: 0.35, fill: true }] },
+      options: {
+        animation:false, responsive:true,
+        plugins:{ legend:{ display:false }},
+        scales:{ x:{ display:false }, y:{ display:false, min:0, max:100 } }
+      }
+    });
+    return (v) => {
+      const t = new Date().toLocaleTimeString();
+      labels.push(t); data.push(v);
+      if (labels.length > 60){ labels.shift(); data.shift(); }
+      chart.update();
+    };
+  };
+
+  const pushCpu  = mkSpark('chartCpu','CPU %');
+  const pushMem  = mkSpark('chartMem','RAM %');
+  const pushDisk = mkSpark('chartDisk','DISK %');
+
+  async function tick(){
+    try{
+      const r = await fetch('{{ url_for("system_json") }}');
+      if(!r.ok) return;
+      const j = await r.json();
+
+      // entêtes
+      document.getElementById('st-host').textContent   = j.host || '—';
+      document.getElementById('st-kernel').textContent = j.kernel || '—';
+      document.getElementById('st-ips').textContent    = j.ips || '—';
+
+      // uptime
+      document.getElementById('st-uptime').textContent = j.uptime?.human || '—';
+
+      // CPU / MEM / DISK %
+      const cpu = j.cpu?.percent ?? 0;
+      const mem = j.mem?.percent ?? 0;
+      const dsk = j.disk?.percent ?? 0;
+      document.getElementById('st-cpu').textContent  = cpu;
+      document.getElementById('st-mem').textContent  = mem;
+      document.getElementById('st-disk').textContent = dsk;
+
+      // bytes
+      if (j.mem) {
+        document.getElementById('st-mem-bytes').textContent =
+          fmtBytes(j.mem.used_kb*1024) + " / " + fmtBytes(j.mem.total_kb*1024);
+      }
+      if (j.disk) {
+        document.getElementById('st-disk-bytes').textContent =
+          fmtBytes(j.disk.used) + " / " + fmtBytes(j.disk.total);
+      }
+
+      // push dans les mini-graphes
+      pushCpu(cpu); pushMem(mem); pushDisk(dsk);
+    }catch(e){}
+  }
+  tick(); setInterval(tick, 2000);
+})();
+</script>
+{% endblock %}
