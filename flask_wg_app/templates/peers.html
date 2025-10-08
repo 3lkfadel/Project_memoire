@@ -2,8 +2,16 @@
 {% set active_tab = 'peers' %}
 
 {% block content %}
-  <div class="panel-head">
-    <div class="actions">
+
+<!-- Header + recherche + ajout -->
+<div class="card" style="margin-bottom:14px;">
+  <div class="card-head">
+    <h2 style="margin:0">Peers</h2>
+    <div class="row">
+      <div class="input icon-left">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="peerSearch" class="input" placeholder="Rechercher (clé, endpoint, IP…)" />
+      </div>
       {% if running %}
         <a class="btn primary" href="{{ url_for('peers_new') }}">+ Ajouter un peer</a>
       {% else %}
@@ -11,34 +19,90 @@
       {% endif %}
     </div>
   </div>
+</div>
 
-  <h2 class="h2">Peers</h2>
-  {% if running and peers %}
-  <div class="table">
-    <div class="row head">
-      <div>Clé publique</div><div>Endpoint</div><div>Allowed IPs</div>
-      <div>Handshake</div><div>RX</div><div>TX</div><div>Keepalive</div><div>Actions</div>
-    </div>
-    {% for p in peers %}
-    <div class="row">
-      <div class="mono keycell" title="{{ p.public_key }}">{{ p.public_key[:12] }}…{{ p.public_key[-8:] }}</div>
-      <div>{{ p.endpoint or '—' }}</div>
-      <div class="mono">{{ p.allowed_ips }}</div>
-      <div>{{ p.latest_handshake }}</div>
-      <div>{{ p.transfer_rx }}</div>
-      <div>{{ p.transfer_tx }}</div>
-      <div>{{ p.keepalive or '—' }}</div>
-      <div class="row-actions">
-        <a class="btn ghost" href="{{ url_for('peers_edit_form') }}?public_key={{ p.public_key }}">Modifier</a>
-        <form method="post" action="{{ url_for('peers_delete') }}" onsubmit="return confirm('Supprimer ce peer ?');">
-          <input type="hidden" name="public_key" value="{{ p.public_key }}">
-          <button class="btn danger" type="submit">Supprimer</button>
-        </form>
-      </div>
-    </div>
-    {% endfor %}
+{% if running and peers %}
+<!-- Tableau peers -->
+<div class="card">
+  <div class="card-body table-wrap">
+    <table class="table-peers">
+      <thead>
+        <tr>
+          <th>Clé publique</th>
+          <th>Endpoint</th>
+          <th>Allowed IPs</th>
+          <th>Handshake</th>
+          <th>RX</th>
+          <th>TX</th>
+          <th>Keepalive</th>
+          <th style="text-align:right">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="peerRows">
+        {% for p in peers %}
+        <tr>
+          <!-- clé publique raccourcie + tooltip -->
+          <td class="mono ellip" title="{{ p.public_key }}">{{ p.public_key[:12] }}…{{ p.public_key[-8:] }}</td>
+
+          <!-- endpoint -->
+          <td class="mono">{{ p.endpoint or '—' }}</td>
+
+          <!-- allowed IPs (wrap) -->
+          <td class="mono wrap">{{ p.allowed_ips or '—' }}</td>
+
+          <!-- handshake avec badge -->
+          <td>
+            {% if p.latest_handshake and p.latest_handshake != 'Never' %}
+              <span class="badge ok">{{ p.latest_handshake }}</span>
+            {% else %}
+              <span class="badge warn">Never</span>
+            {% endif %}
+          </td>
+
+          <!-- RX / TX -->
+          <td class="mono">{{ p.transfer_rx or '0 B' }}</td>
+          <td class="mono">{{ p.transfer_tx or '0 B' }}</td>
+
+          <!-- keepalive -->
+          <td class="mono">{{ p.keepalive or '—' }}</td>
+
+          <!-- actions alignées à droite -->
+          <td style="text-align:right;">
+            <div class="row" style="justify-content:flex-end;">
+              <a class="btn ghost" href="{{ url_for('peers_edit_form') }}?public_key={{ p.public_key }}">Modifier</a>
+              <form method="post" action="{{ url_for('peers_delete') }}" onsubmit="return confirm('Supprimer ce peer ?');" style="display:inline;">
+                <input type="hidden" name="public_key" value="{{ p.public_key }}">
+                <button class="btn danger" type="submit">Supprimer</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
-  {% else %}
-    <p class="hint">Aucun peer (ou interface arrêtée).</p>
-  {% endif %}
+</div>
+{% else %}
+  <div class="card">
+    <div class="card-body">
+      <p class="hint" style="margin:0">Aucun peer (ou interface arrêtée).</p>
+    </div>
+  </div>
+{% endif %}
+
+<!-- Filtre client -->
+<script>
+(function(){
+  const q = document.getElementById('peerSearch');
+  const rows = Array.from(document.querySelectorAll('#peerRows tr'));
+  if (!q || rows.length === 0) return;
+  q.addEventListener('input', () => {
+    const s = q.value.trim().toLowerCase();
+    rows.forEach(tr => {
+      tr.style.display = tr.textContent.toLowerCase().includes(s) ? '' : 'none';
+    });
+  });
+})();
+</script>
+
 {% endblock %}

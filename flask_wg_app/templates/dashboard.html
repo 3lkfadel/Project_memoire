@@ -1,112 +1,154 @@
 {% extends "layout.html" %}
 {% block content %}
 
-<div class="grid-2">
-  <!-- Hero / Graph card -->
-  
-    
-  <!-- Compact system summary -->
-  <aside class="summary">
-    <div class="summary-head">
-      <h3>Résumé système</h3>
+<div class="dashboard-row">
+
+  <!-- Colonne gauche : carte Graph -->
+  <div class="card card-graph">
+    <div class="card-head">
+      <div class="head-left">
+        <span class="title">Trafic VPN</span>
+        <div class="legend">
+          <span class="legend-pill"><span class="dot rx"></span> RX (B/s)</span>
+          <span class="legend-pill"><span class="dot tx"></span> TX (B/s)</span>
+        </div>
+      </div>
+      <div class="head-right">
+        <span class="muted">Mise à jour auto</span>
+        <button id="refreshChart" class="btn ghost" title="Rafraîchir">↻</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <canvas id="chart" height="220"></canvas>
+    </div>
+  </div>
+
+  <!-- Colonne droite : Résumé système -->
+  <aside class="card card-summary">
+    <div class="card-head">
+      <strong>Résumé système</strong>
       <div class="actions">
         {% if running %}
-        <a class="btn ghost" href="{{ url_for('stop') }}">Éteindre</a>
+          <a class="btn ghost" href="{{ url_for('stop') }}">Éteindre</a>
         {% else %}
-        <a class="btn ghost" href="{{ url_for('start') }}">Démarrer</a>
+          <a class="btn ghost" href="{{ url_for('start') }}">Démarrer</a>
         {% endif %}
         <a class="btn ghost" href="{{ url_for('restart') }}">↻ Redémarrer</a>
       </div>
     </div>
 
-    <div class="kpis">
-      <div class="kpi">
-        <div class="kpi-label">Interface</div>
-        <div class="kpi-value">wg0</div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-label">Clé publique</div>
-        <div class="kpi-value mono">
-          {% if server %}{{ server.public_key[:10] }}…{{ server.public_key[-6:] }}{% else %}?{% endif %}
+    <div class="card-body">
+      <div class="kpis kpi-grid">
+        <div class="kpi">
+          <div class="kpi-label">Interface</div>
+          <div class="kpi-value">wg0</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Clé publique</div>
+          <div class="kpi-value mono">
+            {% if server %}{{ server.public_key[:10] }}…{{ server.public_key[-6:] }}{% else %}?{% endif %}
+          </div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Port d’écoute</div>
+          <div class="kpi-value">{{ server.listen_port if server else '?' }}</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Peers actifs</div>
+          <div class="kpi-value">{{ peers|length }}</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Dernier handshake</div>
+          <div class="kpi-value">
+            {% if peers and peers[0].latest_handshake != 'Never' %}
+              {{ peers[0].latest_handshake }}
+            {% else %}—{% endif %}
+          </div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Total RX / TX</div>
+          <div class="kpi-value">
+            {{ peers|map(attribute='transfer_rx')|list|join(' + ') if peers else '0 B' }}
+            /
+            {{ peers|map(attribute='transfer_tx')|list|join(' + ') if peers else '0 B' }}
+          </div>
         </div>
       </div>
-      <div class="kpi">
-        <div class="kpi-label">Port d’écoute</div>
-        <div class="kpi-value">{{ server.listen_port if server else '?' }}</div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-label">Peers actifs</div>
-        <div class="kpi-value">{{ peers|length }}</div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-label">Dernier handshake</div>
-        <div class="kpi-value">
-          {% if peers and peers[0].latest_handshake != 'Never' %}
-            {{ peers[0].latest_handshake }}
-          {% else %}—{% endif %}
-        </div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-label">Total RX / TX</div>
-        <div class="kpi-value">
-          {{ peers|map(attribute='transfer_rx')|list|join(' + ') if peers else '0 B' }}
-          /
-          {{ peers|map(attribute='transfer_tx')|list|join(' + ') if peers else '0 B' }}
-        </div>
-      </div>
-    </div>
 
-    <p class="hint">
-      Les détails complets (wg show, logs) sont disponibles dans l’onglet <strong>Journal</strong>.
-    </p>
+      <p class="hint" style="margin-top:10px">
+        Les détails complets (wg show, logs) sont disponibles dans l’onglet <strong>Journal</strong>.
+      </p>
+    </div>
   </aside>
+
 </div>
 
-<!-- Chart script (same endpoint, bigger canvas + smoothing) -->
+<!-- Chart.js uniquement ici -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 (function(){
-  const el = document.getElementById('chart').getContext('2d');
-  let last = null;
+  const el = document.getElementById('chart');
+  if (!el || !window.Chart) return;
+
+  const ctx = el.getContext('2d');
+  const gradRX = ctx.createLinearGradient(0, 0, 0, el.height);
+  gradRX.addColorStop(0, 'rgba(59,130,246,.25)');
+  gradRX.addColorStop(1, 'rgba(59,130,246,0)');
+  const gradTX = ctx.createLinearGradient(0, 0, 0, el.height);
+  gradTX.addColorStop(0, 'rgba(244,63,94,.35)');
+  gradTX.addColorStop(1, 'rgba(244,63,94,0)');
+
   const labels = [], rx = [], tx = [];
-  const chart = new Chart(el, {
+  let last = null;
+
+  const chart = new Chart(ctx, {
     type: 'line',
     data: {
       labels,
       datasets: [
-        { label: 'RX (B/s)', data: rx, tension: 0.35, fill: true },
-        { label: 'TX (B/s)', data: tx, tension: 0.35, fill: true }
+        { label: 'RX (B/s)', data: rx, tension: .35, borderWidth: 2, fill: true, backgroundColor: gradRX, borderColor: 'rgba(59,130,246,1)', pointRadius: 0 },
+        { label: 'TX (B/s)', data: tx, tension: .35, borderWidth: 2, fill: true, backgroundColor: gradTX, borderColor: 'rgba(244,63,94,1)', pointRadius: 0 }
       ]
     },
     options: {
       responsive: true,
       animation: false,
-      plugins: { legend: { display: true } },
+      plugins: { legend: { display: false } },
       scales: {
-        y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,.15)' } },
-        x: { ticks: { maxRotation: 0 }, grid: { display:false } }
+        y: { beginAtZero: true, ticks: { callback: v => formatBytes(v) } },
+        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } }
       }
     }
   });
 
+  function formatBytes(b){
+    if (b < 1024) return `${b} B`;
+    const u = ['KB','MB','GB','TB']; let i = -1;
+    do { b /= 1024; i++; } while (b >= 1024 && i < u.length-1);
+    return `${b.toFixed(1)} ${u[i]}`;
+  }
+
   async function tick(){
     try{
       const r = await fetch('{{ url_for("metrics") }}');
-      if(!r.ok) return;
+      if (!r.ok) return;
       const j = await r.json(); // {ts, rx, tx} cumulés
-      if(last){
+      if (last) {
         const dt = Math.max(1, j.ts - last.ts);
         const rxps = Math.max(0, (j.rx - last.rx) / dt);
         const txps = Math.max(0, (j.tx - last.tx) / dt);
-        const t = new Date(j.ts * 1000).toLocaleTimeString();
-        labels.push(t); rx.push(rxps); tx.push(txps);
-        if(labels.length > 120){ labels.shift(); rx.shift(); tx.shift(); }
+        labels.push(new Date(j.ts * 1000).toLocaleTimeString());
+        rx.push(rxps); tx.push(txps);
+        if (labels.length > 60) { labels.shift(); rx.shift(); tx.shift(); }
         chart.update();
       }
       last = j;
-    }catch(e){}
+    }catch(_){}
   }
+
   setInterval(tick, 1000);
+  document.getElementById('refreshChart')?.addEventListener('click', tick);
 })();
 </script>
+
 {% endblock %}

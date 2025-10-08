@@ -2,7 +2,11 @@
 {% set active_tab = 'server' %}
 
 {% block content %}
-  <div class="panel-head">
+
+<!-- Barre d’actions -->
+<div class="card" style="margin-bottom:14px;">
+  <div class="card-head">
+    <strong>Serveur WireGuard</strong>
     <div class="actions">
       {% if running %}
         <a class="btn ring" data-action="hit" data-url="{{ url_for('stop') }}">● Éteindre</a>
@@ -12,31 +16,57 @@
       {% endif %}
     </div>
   </div>
+</div>
 
-  <h2 class="h2">Réglages serveur</h2>
-  <div class="grid-2">
-    <div class="card">
-      <h3>Port d’écoute</h3>
-      <p>Actuel : <b>{{ info.listen_port if info else '—' }}</b></p>
-      <form method="post">
-        <input type="number" name="port" min="1" max="65535" placeholder="51820" required>
-        <button class="btn" type="submit">Changer</button>
+<h2 class="h2" style="margin:6px 0 10px;">Réglages serveur</h2>
+
+<div class="grid-2">
+  <!-- Port d’écoute -->
+  <div class="card">
+    <div class="card-head"><strong>Port d’écoute</strong></div>
+    <div class="card-body">
+      <p class="muted" style="margin:0 0 10px;">
+        Actuel : <b>{{ info.listen_port if info else '—' }}</b>
+      </p>
+
+      <form method="post" class="form-inline">
+        <div class="input-group">
+          <input class="input" type="number" name="port" min="1" max="65535" placeholder="51820" required>
+          <button class="btn primary" type="submit">Changer</button>
+        </div>
+        <p class="hint" style="margin-top:8px">Le port doit être ouvert sur le pare-feu.</p>
       </form>
     </div>
+  </div>
 
-    <div class="card danger">
-      <h3>Rotation des clés</h3>
-      <p><b>Attention :</b> cela change la clé publique du serveur. Tous les clients doivent mettre à jour leur conf.</p>
+  <!-- Rotation des clés -->
+  <div class="card">
+    <div class="card-head"><strong>Rotation des clés</strong></div>
+    <div class="card-body">
+      <div class="callout danger" role="alert">
+        <b>Attention :</b> la rotation change la <em>clé publique</em> du serveur.
+        Tous les clients doivent mettre à jour leur configuration.
+      </div>
       <form method="post" onsubmit="return confirm('Confirmer la rotation des clés serveur ?');">
         <input type="hidden" name="rotate_keys" value="1">
         <button class="btn danger" type="submit">Régénérer les clés</button>
       </form>
     </div>
   </div>
+</div>
 
-  <h2 class="h2" style="margin-top:18px;">Configuration</h2>
-  <div class="card">
-    <a class="btn" href="{{ url_for('server_conf_download') }}">⬇ Télécharger wg0.conf</a>
-    <a class="btn" href="{{ url_for('server_restore') }}">↩ Restaurer un backup</a>
+<h2 class="h2" style="margin:18px 0 10px;">Configuration</h2>
+
+<div class="card">
+  <div class="card-body">
+    <div class="row" style="justify-content:space-between; gap:10px; flex-wrap:wrap;">
+      <div class="muted">Exporter/Restaurer la configuration du serveur.</div>
+      <div class="row" style="gap:10px;">
+        <a class="btn" href="{{ url_for('server_conf_download') }}">⬇ Télécharger <span class="mono">wg0.conf</span></a>
+        <a class="btn ghost" href="{{ url_for('server_restore') }}">↩ Restaurer un backup</a>
+      </div>
+    </div>
   </div>
+</div>
+
 {% endblock %}

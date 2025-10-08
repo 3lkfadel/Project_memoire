@@ -1,0 +1,170 @@
+{% extends "layout.html" %}
+{% set active_tab = 'setup' %}
+{% block content %}
+
+<header class="page-head">
+  <div>
+    <h1 class="page-title">Assistant d’installation</h1>
+    <p class="muted">Importe une conf existante <em>ou</em> génère un nouveau <code>wg0.conf</code> en quelques clics.</p>
+  </div>
+</header>
+
+<div class="setup-grid">
+  <!-- ===== Importer ===== -->
+  <section class="card card-elev">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">Importer un fichier de configuration</h2>
+        <p class="muted">Charge un <code>wg0.conf</code> déjà prêt, NovaGuard fera le reste.</p>
+      </div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" action="{{ url_for('setup.setup') }}" class="form form-vert">
+      <div class="field">
+        <label class="label">Interface</label>
+        <input class="input" name="iface" value="wg0" />
+      </div>
+
+      <div class="field">
+        <label class="label">Fichier .conf</label>
+        <label class="file">
+          <input type="file" name="conf" accept=".conf" required>
+          <span class="file-cta">Choisir un fichier</span>
+          <span class="file-name" data-placeholder="Aucun fichier choisi"></span>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button class="btn primary wide" type="submit">Importer &amp; appliquer</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ===== Générer ===== -->
+  <section class="card card-elev">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">Générer un nouveau <code>wg0.conf</code></h2>
+        <p class="muted">Crée la conf serveur (clés, réseau, peers) et applique en 1 clic.</p>
+      </div>
+    </div>
+
+    <form method="post" action="{{ url_for('setup.setup_generate') }}" class="form form-vert" id="genForm">
+      <div class="grid2">
+        <div class="field">
+          <label class="label">Interface</label>
+          <input class="input" name="iface" value="wg0">
+        </div>
+        <div class="field">
+          <label class="label">Listen port</label>
+          <input class="input" name="listen_port" type="number" min="1" max="65535" value="51820">
+        </div>
+        <div class="field">
+          <label class="label">Adresse CIDR (serveur)</label>
+          <input class="input" name="address_cidr" placeholder="10.200.0.1/24" required>
+        </div>
+        <div class="field">
+          <label class="label">DNS (optionnel)</label>
+          <input class="input" name="dns" placeholder="1.1.1.1">
+        </div>
+      </div>
+
+      <div class="field keygen">
+        <label class="label">Clé privée serveur (laisser vide pour générer)</label>
+        <div class="row">
+          <input class="input" name="server_priv" placeholder="(auto)">
+          <button class="btn ghost" type="button" id="btnGenKeys">Générer clés</button>
+        </div>
+        <p class="hint">La clé publique sera déduite automatiquement.</p>
+      </div>
+
+      <div class="card soft">
+        <div class="card-head small">
+          <strong>Peers (facultatif)</strong>
+          <span class="muted">PublicKey + AllowedIPs (/32 conseillé), optionnel : Keepalive.</span>
+        </div>
+
+        {% for i in range(1,6) %}
+        <div class="peer-row">
+          <input class="input" name="peer{{i}}_pub" placeholder="PublicKey peer #{{i}}">
+          <input class="input" name="peer{{i}}_allowed" placeholder="AllowedIPs peer #{{i}} (ex: 10.200.0.10/32)">
+          <input class="input" name="peer{{i}}_ka" placeholder="Keepalive (ex: 25)">
+        </div>
+        {% endfor %}
+
+        <label class="switch">
+          <input type="checkbox" name="add_fw" checked>
+          <span>Activer l’IP forwarding via PostUp/Down</span>
+        </label>
+      </div>
+
+      <div class="row actions">
+        <button class="btn primary" type="submit">Générer &amp; appliquer</button>
+        <button class="btn ghost" type="button" id="btnPreview">Prévisualiser</button>
+      </div>
+
+      <pre id="preview" class="panel-raw" style="display:none; margin-top:8px"></pre>
+    </form>
+  </section>
+</div>
+
+<script>
+/* file input pretty name */
+document.querySelectorAll('.file input[type="file"]').forEach(inp=>{
+  inp.addEventListener('change', e=>{
+    const name = e.target.files?.[0]?.name || '';
+    const tag = e.target.closest('.file').querySelector('.file-name');
+    tag.textContent = name || tag.dataset.placeholder || '';
+  });
+});
+
+document.getElementById('btnGenKeys')?.addEventListener('click', async () => {
+  try{
+    const r = await fetch('{{ url_for("setup.setup_genkeys_json") }}');
+    const j = await r.json();
+    if(j.ok){
+      document.querySelector('input[name="server_priv"]').value = j.private;
+      alert("Clés générées.");
+    }else{
+      alert("Erreur génération: " + (j.error||'?'));
+    }
+  }catch(e){ alert("Erreur: "+e); }
+});
+
+document.getElementById('btnPreview')?.addEventListener('click', () => {
+  const f = document.getElementById('genForm');
+  const lp = f.listen_port.value || '51820';
+  const addr = f.address_cidr.value || '10.200.0.1/24';
+  const dns  = f.dns.value.trim();
+  const priv = f.server_priv.value.trim() || '<sera générée>';
+  const addfw= f.add_fw.checked;
+
+  let out = [];
+  out.push('[Interface]');
+  out.push('PrivateKey = ' + priv);
+  out.push('Address = ' + addr);
+  out.push('ListenPort = ' + lp);
+  if(dns) out.push('DNS = ' + dns);
+  if(addfw){
+    out.push('PostUp = sysctl -w net.ipv4.ip_forward=1');
+    out.push('PostDown = sysctl -w net.ipv4.ip_forward=0');
+  }
+  out.push('');
+
+  for(let i=1;i<=5;i++){
+    const pub = f['peer'+i+'_pub'].value.trim();
+    const allowed = f['peer'+i+'_allowed'].value.trim();
+    const ka = f['peer'+i+'_ka'].value.trim();
+    if(!pub || !allowed) continue;
+    out.push('[Peer]');
+    out.push('PublicKey = ' + pub);
+    out.push('AllowedIPs = ' + allowed);
+    if(ka) out.push('PersistentKeepalive = ' + ka);
+    out.push('');
+  }
+  const pre = document.getElementById('preview');
+  pre.textContent = out.join('\n');
+  pre.style.display = 'block';
+});
+</script>
+{% endblock %}

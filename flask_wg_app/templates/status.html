@@ -1,73 +1,96 @@
 {% extends "layout.html" %}
+{% set active_tab = 'status' %}
 {% block content %}
-<div class="grid-2">
-  <!-- Colonne gauche : panneau violet avec mini-graphiques -->
-  <section class="hero">
-    <div class="hero-head">
-      <div>
-        <h2>État du serveur</h2>
-        <p class="muted">Ressources en temps réel (CPU / RAM / Disque / Uptime)</p>
-      </div>
-      <span class="badge {{ 'on' if running else 'off' }}">{{ 'ACTIF' if running else 'INACTIF' }}</span>
-    </div>
 
-    <div class="chips">
-      <span class="chip">Hôte : <span id="st-host">—</span></span>
-      <span class="chip">Kernel : <span id="st-kernel">—</span></span>
-      <span class="chip">IP(s) : <span id="st-ips">—</span></span>
+<div class="card" style="margin-bottom:14px;">
+  <div class="card-head">
+    <div>
+      <h2 style="margin:0">État du serveur</h2>
+      <p class="muted" style="margin:4px 0 0">Ressources en temps réel (CPU / RAM / Disque / Uptime)</p>
     </div>
+    <div class="actions">
+      {% if running %}
+        <a class="btn ghost" href="{{ url_for('stop') }}">Éteindre</a>
+      {% else %}
+        <a class="btn ghost" href="{{ url_for('start') }}">Démarrer</a>
+      {% endif %}
+      <a class="btn ghost" href="{{ url_for('restart') }}">↻ Redémarrer</a>
+    </div>
+  </div>
+</div>
 
-    <div class="kpis kpis-3">
-      <div class="kpi">
-        <div class="kpi-label">CPU</div>
-        <div class="kpi-value"><span id="st-cpu">0</span>%</div>
-        <canvas id="chartCpu" height="70"></canvas>
+<div class="status-row">
+  <!-- Colonne gauche : cartes métriques -->
+  <section class="tiles">
+    <!-- CPU -->
+    <article class="tile">
+      <header class="tile-head">
+        <div class="tile-title">CPU</div>
+        <div class="tile-val"><span id="st-cpu">0</span>%</div>
+      </header>
+      <div class="meter"><span id="barCpu" style="width:0%"></span></div>
+      <canvas id="chartCpu" height="56"></canvas>
+    </article>
+
+    <!-- RAM -->
+    <article class="tile">
+      <header class="tile-head">
+        <div class="tile-title">Mémoire</div>
+        <div class="tile-val"><span id="st-mem">0</span>%</div>
+      </header>
+      <div class="meter"><span id="barMem" style="width:0%"></span></div>
+      <canvas id="chartMem" height="56"></canvas>
+    </article>
+
+    <!-- Disque -->
+    <article class="tile">
+      <header class="tile-head">
+        <div class="tile-title">Disque (/)</div>
+        <div class="tile-val"><span id="st-disk">0</span>%</div>
+      </header>
+      <div class="meter"><span id="barDisk" style="width:0%"></span></div>
+      <canvas id="chartDisk" height="56"></canvas>
+    </article>
+
+    <!-- Infos hôte -->
+    <article class="tile">
+      <header class="tile-head">
+        <div class="tile-title">Infos hôte</div>
+      </header>
+      <div class="chips" style="margin-top:8px">
+        <span class="chip">Hôte : <span id="st-host">—</span></span>
+        <span class="chip">Kernel : <span id="st-kernel">—</span></span>
+        <span class="chip">IP(s) : <span id="st-ips">—</span></span>
       </div>
-      <div class="kpi">
-        <div class="kpi-label">Mémoire</div>
-        <div class="kpi-value"><span id="st-mem">0</span>%</div>
-        <canvas id="chartMem" height="70"></canvas>
-      </div>
-      <div class="kpi">
-        <div class="kpi-label">Disque (/)</div>
-        <div class="kpi-value"><span id="st-disk">0</span>%</div>
-        <canvas id="chartDisk" height="70"></canvas>
-      </div>
-    </div>
+    </article>
   </section>
 
-  <!-- Colonne droite : résumé compact + uptime -->
-  <aside class="summary">
-    <div class="summary-head">
-      <h3>Résumé système</h3>
-      <div class="actions">
-        {% if running %}
-          <a class="btn ghost" href="{{ url_for('stop') }}">Éteindre</a>
-        {% else %}
-          <a class="btn ghost" href="{{ url_for('start') }}">Démarrer</a>
-        {% endif %}
-        <a class="btn ghost" href="{{ url_for('restart') }}">↻ Redémarrer</a>
-      </div>
+  <!-- Colonne droite : résumé -->
+  <aside class="card card-summary">
+    <div class="card-head">
+      <strong>Résumé système</strong>
+      <span class="badge {{ 'on' if running else 'off' }}">{{ 'ACTIF' if running else 'INACTIF' }}</span>
     </div>
+    <div class="card-body">
+      <div class="kpis kpi-grid">
+        <div class="kpi">
+          <div class="kpi-label">Uptime</div>
+          <div class="kpi-value" id="st-uptime">—</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">RAM</div>
+          <div class="kpi-value mono" id="st-mem-bytes">—</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Disque</div>
+          <div class="kpi-value mono" id="st-disk-bytes">—</div>
+        </div>
+      </div>
 
-    <div class="kpis">
-      <div class="kpi">
-        <div class="kpi-label">Uptime</div>
-        <div class="kpi-value" id="st-uptime">—</div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-label">RAM</div>
-        <div class="kpi-value mono" id="st-mem-bytes">—</div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-label">Disque</div>
-        <div class="kpi-value mono" id="st-disk-bytes">—</div>
-      </div>
+      <p class="hint" style="margin-top:10px">
+        Les métriques se mettent à jour automatiquement toutes les 2&nbsp;secondes.
+      </p>
     </div>
-
-    <p class="hint">
-      Les métriques se mettent à jour automatiquement toutes les 2 secondes.
-    </p>
   </aside>
 </div>
 
@@ -75,35 +98,34 @@
 <script>
 (function(){
   const fmtBytes = (n) => {
-    const units = ["B","KiB","MiB","GiB","TiB"];
-    let i=0, v = Number(n);
-    while (v >= 1024 && i < units.length-1) { v/=1024; i++; }
-    return v.toFixed(1) + " " + units[i];
+    const u = ["B","KiB","MiB","GiB","TiB"]; let i=0, v=Number(n)||0;
+    while(v>=1024 && i<u.length-1){ v/=1024; i++; }
+    return v.toFixed(1)+' '+u[i];
   };
 
-  const mkSpark = (elId, label) => {
-    const ctx = document.getElementById(elId).getContext('2d');
-    const labels = [], data = [];
-    const chart = new Chart(ctx, {
-      type: 'line',
-      data: { labels, datasets: [{ label, data, tension: 0.35, fill: true }] },
-      options: {
-        animation:false, responsive:true,
-        plugins:{ legend:{ display:false }},
-        scales:{ x:{ display:false }, y:{ display:false, min:0, max:100 } }
-      }
+  function mkSpark(id, color){
+    const el = document.getElementById(id);
+    if (!el) return () => {};
+    const ctx = el.getContext('2d');
+    const grad = ctx.createLinearGradient(0,0,0,el.height);
+    grad.addColorStop(0, color.replace('1)', '.28)'));
+    grad.addColorStop(1, color.replace('1)', '0)'));
+    const labels=[], data=[];
+    const chart = new Chart(ctx,{
+      type:'line',
+      data:{ labels, datasets:[{ data, tension:.35, borderWidth:2, borderColor: color, backgroundColor: grad, pointRadius:0, fill:true }]},
+      options:{ animation:false, responsive:true, plugins:{legend:{display:false}}, scales:{ x:{display:false}, y:{display:false, min:0, max:100 } } }
     });
-    return (v) => {
-      const t = new Date().toLocaleTimeString();
-      labels.push(t); data.push(v);
-      if (labels.length > 60){ labels.shift(); data.shift(); }
-      chart.update();
-    };
-  };
+    return (v)=>{ const t=new Date().toLocaleTimeString(); labels.push(t); data.push(v); if(labels.length>60){labels.shift(); data.shift();} chart.update(); };
+  }
 
-  const pushCpu  = mkSpark('chartCpu','CPU %');
-  const pushMem  = mkSpark('chartMem','RAM %');
-  const pushDisk = mkSpark('chartDisk','DISK %');
+  const pushCpu  = mkSpark('chartCpu','rgba(59,130,246,1)');  // bleu
+  const pushMem  = mkSpark('chartMem','rgba(99,102,241,1)');  // indigo
+  const pushDisk = mkSpark('chartDisk','rgba(14,165,233,1)'); // cyan
+
+  const barCpu  = document.getElementById('barCpu');
+  const barMem  = document.getElementById('barMem');
+  const barDisk = document.getElementById('barDisk');
 
   async function tick(){
     try{
@@ -111,33 +133,36 @@
       if(!r.ok) return;
       const j = await r.json();
 
-      // entêtes
+      // Infos hôte
       document.getElementById('st-host').textContent   = j.host || '—';
       document.getElementById('st-kernel').textContent = j.kernel || '—';
       document.getElementById('st-ips').textContent    = j.ips || '—';
 
-      // uptime
+      // Uptime
       document.getElementById('st-uptime').textContent = j.uptime?.human || '—';
 
-      // CPU / MEM / DISK %
-      const cpu = j.cpu?.percent ?? 0;
-      const mem = j.mem?.percent ?? 0;
-      const dsk = j.disk?.percent ?? 0;
+      // Pourcentages
+      const cpu = Math.round(j.cpu?.percent ?? 0);
+      const mem = Math.round(j.mem?.percent ?? 0);
+      const dsk = Math.round(j.disk?.percent ?? 0);
       document.getElementById('st-cpu').textContent  = cpu;
       document.getElementById('st-mem').textContent  = mem;
       document.getElementById('st-disk').textContent = dsk;
+      barCpu.style.width  = cpu + '%';
+      barMem.style.width  = mem + '%';
+      barDisk.style.width = dsk + '%';
 
-      // bytes
+      // Volumes
       if (j.mem) {
         document.getElementById('st-mem-bytes').textContent =
-          fmtBytes(j.mem.used_kb*1024) + " / " + fmtBytes(j.mem.total_kb*1024);
+          fmtBytes(j.mem.used_kb*1024) + ' / ' + fmtBytes(j.mem.total_kb*1024);
       }
       if (j.disk) {
         document.getElementById('st-disk-bytes').textContent =
-          fmtBytes(j.disk.used) + " / " + fmtBytes(j.disk.total);
+          fmtBytes(j.disk.used) + ' / ' + fmtBytes(j.disk.total);
       }
 
-      // push dans les mini-graphes
+      // Mini-charts
       pushCpu(cpu); pushMem(mem); pushDisk(dsk);
     }catch(e){}
   }

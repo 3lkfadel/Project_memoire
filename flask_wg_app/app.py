@@ -688,9 +688,174 @@ def _disconnect_ssh():
     except: pass
     emit("status", {"state":"closed"})
 
+from flask import Blueprint, render_template, request, flash, redirect, url_for
+from markupsafe import Markup
 
+bp_setup = Blueprint("setup", __name__)
+UPLOAD_DIR = "/var/lib/novaguard/uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# -------------------- Lancement --------------------
+@bp_setup.route("/setup", methods=["GET","POST"])
+def setup():
+    if request.method == "POST":
+        f = request.files.get("conf")
+        iface = (request.form.get("iface") or "wg0").strip()
+        if not f or not f.filename.endswith(".conf"):
+            flash(("error", "Charge un fichier .conf valide (wg0.conf)."))
+            return redirect(url_for("setup.setup"))
+
+        tmp_path = os.path.join(UPLOAD_DIR, next(tempfile._get_candidate_names()) + ".conf")
+        f.save(tmp_path)
+
+        # Mini validation
+        with open(tmp_path, "r", encoding="utf-8", errors="ignore") as fh:
+            content = fh.read()
+        if "[Interface]" not in content or "PrivateKey" not in content:
+            os.remove(tmp_path)
+            flash(("error", "Fichier invalide: section [Interface]/PrivateKey manquante."))
+            return redirect(url_for("setup.setup"))
+
+        # Appel privilégié (sans mot de passe si l’app tourne sous www-data)
+        proc = subprocess.run(
+            ["sudo", "/usr/local/bin/novaguard-apply", "--iface", iface, "--conf", tmp_path],
+            capture_output=True, text=True, timeout=600
+        )
+        out = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
+        # Option: garder l’upload pour audit, sinon décommente la ligne suivante
+        # os.remove(tmp_path)
+
+        if proc.returncode == 0:
+            flash(("success", f" Configuration terminée pour <b>{iface}</b>."))
+            flash(("info", Markup(f"<pre class='panel-raw'>{out}</pre>")))
+        else:
+            flash(("error", f"Échec de l’installation ({proc.returncode})."))
+            flash(("error", Markup(f"<pre class='panel-raw'>{out}</pre>")))
+        return redirect(url_for("setup.setup"))
+
+    # ---- mise à jour : active_tab + contexte pour le layout
+    running, status, peers, server = _common_context()
+    return render_template(
+        "setup.html",
+        active_tab="setup",
+        running=running, status=status, peers=peers, server=server
+    )
+
+# --- Helpers de génération (dans la zone du blueprint setup) ---
+def _wg_genkeypair():
+    """Retourne (priv, pub) en utilisant wg genkey/pubkey (pas besoin de sudo)."""
+    import subprocess
+    p = subprocess.run(["wg", "genkey"], capture_output=True, text=True, check=True)
+    priv = p.stdout.strip()
+    p2 = subprocess.run(["wg", "pubkey"], input=priv, capture_output=True, text=True, check=True)
+    pub = p2.stdout.strip()
+    return priv, pub
+
+def _build_server_conf(priv, address_cidr, listen_port, dns=None, peers_rows=None, add_basic_firewall=True):
+    """
+    peers_rows: liste de dicts { 'pub':..., 'allowed':..., 'keepalive': '25'|'' }
+    """
+    lines = []
+    lines += ["[Interface]"]
+    lines += [f"PrivateKey = {priv}",
+              f"Address = {address_cidr}",
+              f"ListenPort = {listen_port}"]
+    if dns:
+        lines += [f"DNS = {dns}"]
+    if add_basic_firewall:
+        # tu peux ajuster ces PostUp/Down à ta politique
+        lines += [
+            "PostUp = sysctl -w net.ipv4.ip_forward=1",
+            "PostDown = sysctl -w net.ipv4.ip_forward=0"
+        ]
+    lines += [""]
+
+    peers_rows = peers_rows or []
+    for row in peers_rows:
+        pub = (row.get("pub") or "").strip()
+        allowed = (row.get("allowed") or "").strip()
+        ka = (row.get("keepalive") or "").strip()
+        if not pub or not allowed:
+            continue
+        lines += ["[Peer]",
+                  f"PublicKey = {pub}",
+                  f"AllowedIPs = {allowed}"]
+        if ka:
+            lines += [f"PersistentKeepalive = {ka}"]
+        lines += [""]
+
+    return "\n".join(lines).strip() + "\n"
+
+@bp_setup.route("/setup/genkeys.json")
+def setup_genkeys_json():
+    try:
+        priv, pub = _wg_genkeypair()
+        return jsonify({"ok": True, "private": priv, "public": pub})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+@bp_setup.route("/setup/generate", methods=["POST"])
+def setup_generate():
+    from markupsafe import Markup
+    iface = (request.form.get("iface") or "wg0").strip()
+    listen_port = (request.form.get("listen_port") or "51820").strip()
+    addr = (request.form.get("address_cidr") or "").strip()
+    dns  = (request.form.get("dns") or "").strip()
+    priv = (request.form.get("server_priv") or "").strip()
+    add_fw = bool(request.form.get("add_fw"))
+
+    # Peers: tableau de lignes dynamiques
+    peers_rows = []
+    for i in range(1, 6):  # 5 lignes de base; ajuste si besoin
+        peers_rows.append({
+            "pub": request.form.get(f"peer{i}_pub", "") or "",
+            "allowed": request.form.get(f"peer{i}_allowed", "") or "",
+            "keepalive": request.form.get(f"peer{i}_ka", "") or ""
+        })
+
+    # Si aucune clé fournie → on génère
+    if not priv:
+        try:
+            priv, _pub = _wg_genkeypair()
+        except Exception as e:
+            flash(("error", f"Impossible de générer les clés: {e}"))
+            return redirect(url_for("setup.setup"))
+
+    # validations simples
+    if not addr or "/" not in addr:
+        flash(("error", "Adresse CIDR invalide (ex: 10.200.0.1/24)."))
+        return redirect(url_for("setup.setup"))
+    try:
+        int(listen_port)
+    except:
+        flash(("error", "Port invalide."))
+        return redirect(url_for("setup.setup"))
+
+    conf_text = _build_server_conf(priv, addr, listen_port, dns=dns or None,
+                                   peers_rows=peers_rows, add_basic_firewall=add_fw)
+
+    # On écrit un fichier temporaire et on appelle novaguard-apply
+    import tempfile, os, subprocess
+    tmp_path = os.path.join(UPLOAD_DIR, next(tempfile._get_candidate_names()) + ".conf")
+    with open(tmp_path, "w") as f:
+        f.write(conf_text)
+
+    proc = subprocess.run(
+        ["sudo", "/usr/local/bin/novaguard-apply", "--iface", iface, "--conf", tmp_path],
+        capture_output=True, text=True
+    )
+    out = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
+
+    if proc.returncode == 0:
+        flash(("success", f" {iface} généré et appliqué.")) 
+        flash(("info", Markup(f"<pre class='panel-raw'>{out}</pre>")))
+    else:
+        flash(("error", f"Échec application ({proc.returncode})."))
+        flash(("error", Markup(f"<pre class='panel-raw'>{out}</pre>")))
+    # Option: os.remove(tmp_path)
+    return redirect(url_for("setup.setup"))
+
+# --- ENREGISTREMENT DU BLUEPRINT (ajouté) ---
+app.register_blueprint(bp_setup)
+
 # -------------------- Lancement --------------------
 if __name__ == "__main__":
     socketio.run(app, host="0.0.0.0", port=5000, debug=True)
