@@ -120,7 +120,7 @@ document.querySelectorAll('.file input[type="file"]').forEach(inp=>{
 
 document.getElementById('btnGenKeys')?.addEventListener('click', async () => {
   try{
-    const r = await fetch('{{ url_for("setup.setup_genkeys_json") }}');
+    const r = await fetch('{{ url_for("setup.genkeys_json") }}');
     const j = await r.json();
     if(j.ok){
       document.querySelector('input[name="server_priv"]').value = j.private;

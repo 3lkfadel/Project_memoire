@@ -10,11 +10,11 @@
     </div>
     <div class="actions">
       {% if running %}
-        <a class="btn ghost" href="{{ url_for('stop') }}">Éteindre</a>
+        <a class="btn ghost" href="{{ url_for('dashboard.stop') }}">Éteindre</a>
       {% else %}
-        <a class="btn ghost" href="{{ url_for('start') }}">Démarrer</a>
+        <a class="btn ghost" href="{{ url_for('dashboard.start') }}">Démarrer</a>
       {% endif %}
-      <a class="btn ghost" href="{{ url_for('restart') }}">↻ Redémarrer</a>
+      <a class="btn ghost" href="{{ url_for('dashboard.restart') }}">↻ Redémarrer</a>
     </div>
   </div>
 </div>
@@ -129,7 +129,7 @@
 
   async function tick(){
     try{
-      const r = await fetch('{{ url_for("system_json") }}');
+      const r = await fetch('{{ url_for("server.system_json") }}');
       if(!r.ok) return;
       const j = await r.json();
 

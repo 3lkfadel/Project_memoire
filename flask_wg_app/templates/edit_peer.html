@@ -4,14 +4,14 @@
 {% block content %}
   <div class="panel-head">
     <div class="actions">
-      <a class="btn" href="{{ url_for('peers_page') }}">← Retour</a>
+      <a class="btn" href="{{ url_for('peers.list_peers_page') }}">← Retour</a>
     </div>
   </div>
 
   <h2 class="h2">Modifier le peer</h2>
   <p><b>PublicKey :</b> <span class="mono">{{ peer.public_key }}</span></p>
 
-  <form method="post" action="{{ url_for('peers_update') }}" class="form">
+  <form method="post" action="{{ url_for('peers.peers_update') }}" class="form">
     <input type="hidden" name="public_key" value="{{ peer.public_key }}">
 
     <label>Allowed IPs (ex: 10.200.0.10/32)</label>

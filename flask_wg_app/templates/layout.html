@@ -4,31 +4,26 @@
   <meta charset="utf-8" />
   <title>NovaGuard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <script defer src="{{ url_for('static', filename='app.js') }}"></script>
-  <!-- ⚠️ Pas de Chart.js ici (seulement sur les pages qui en ont besoin, ex: dashboard) -->
 </head>
 <body class="app">
-  <!-- Topbar -->
   <header class="topbar">
     <div class="brand">
       <img src="{{ url_for('static', filename='logo.svg') }}" alt="NovaGuard" />
       <span>NovaGuard</span>
     </div>
     <nav class="tabs">
-      <a href="{{ url_for('home') }}"                class="{{ 'active' if active_tab=='dashboard' else '' }}">Tableau de bord</a>
-      <a href="{{ url_for('peers_page') }}"          class="{{ 'active' if active_tab=='peers' else '' }}">Peers</a>
-      <a href="{{ url_for('server_settings_page') }}"class="{{ 'active' if active_tab=='server' else '' }}">Serveur</a>
-      <a href="{{ url_for('logs_page') }}"           class="{{ 'active' if active_tab=='logs' else '' }}">Journal</a>
-      <a href="{{ url_for('terminal_page') }}"       class="{{ 'active' if active_tab=='terminal' else '' }}">Console</a>
-      <a href="{{ url_for('status_page') }}"         class="{{ 'active' if active_tab=='status' else '' }}">État</a>
+      <a href="{{ url_for('dashboard.home') }}" class="{{ 'active' if active_tab=='dashboard' else '' }}">Tableau de bord</a>
+      <a href="{{ url_for('peers.list_peers_page') }}" class="{{ 'active' if active_tab=='peers' else '' }}">Peers</a>
+      <a href="{{ url_for('server.settings_page') }}" class="{{ 'active' if active_tab=='server' else '' }}">Serveur</a>
+      <a href="{{ url_for('logs.logs_page') }}" class="{{ 'active' if active_tab=='logs' else '' }}">Journal</a>
+      <a href="{{ url_for('terminal.page') }}" class="{{ 'active' if active_tab=='terminal' else '' }}">Console</a>
+      <a href="{{ url_for('server.status_page') }}" class="{{ 'active' if active_tab=='status' else '' }}">État</a>
       <a href="{{ url_for('setup.setup') }}" class="{{ 'active' if active_tab=='setup' else '' }}">Setup</a>
-
     </nav>
   </header>
 
-  <!-- Conteneur centré commun à toutes les pages -->
   <main class="container">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -40,7 +35,6 @@
       {% endif %}
     {% endwith %}
 
-    <!-- Le contenu spécifique de chaque page -->
     {% block content %}{% endblock %}
   </main>
 </body>

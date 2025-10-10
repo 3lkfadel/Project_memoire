@@ -13,7 +13,7 @@
         <input id="peerSearch" class="input" placeholder="Rechercher (clé, endpoint, IP…)" />
       </div>
       {% if running %}
-        <a class="btn primary" href="{{ url_for('peers_new') }}">+ Ajouter un peer</a>
+        <a class="btn primary" href="{{ url_for('peers.peers_new') }}">+ Ajouter un peer</a>
       {% else %}
         <span class="hint">Démarrez wg0 pour gérer les peers.</span>
       {% endif %}
@@ -69,8 +69,8 @@
           <!-- actions alignées à droite -->
           <td style="text-align:right;">
             <div class="row" style="justify-content:flex-end;">
-              <a class="btn ghost" href="{{ url_for('peers_edit_form') }}?public_key={{ p.public_key }}">Modifier</a>
-              <form method="post" action="{{ url_for('peers_delete') }}" onsubmit="return confirm('Supprimer ce peer ?');" style="display:inline;">
+              <a class="btn ghost" href="{{ url_for('peers.peers_edit_form', public_key=p.public_key) }}">Modifier</a>
+              <form method="post" action="{{ url_for('peers.peers_edit_form', public_key=p.public_key) }}" onsubmit="return confirm('Supprimer ce peer ?');" style="display:inline;">
                 <input type="hidden" name="public_key" value="{{ p.public_key }}">
                 <button class="btn danger" type="submit">Supprimer</button>
               </form>

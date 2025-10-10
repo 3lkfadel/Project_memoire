@@ -9,10 +9,10 @@
     <strong>Serveur WireGuard</strong>
     <div class="actions">
       {% if running %}
-        <a class="btn ring" data-action="hit" data-url="{{ url_for('stop') }}">● Éteindre</a>
-        <a class="btn ghost" data-action="hit" data-url="{{ url_for('restart') }}">↻ Redémarrer</a>
+        <a class="btn ring" data-action="hit" data-url="{{ url_for('dashboard.stop') }}">● Éteindre</a>
+        <a class="btn ghost" data-action="hit" data-url="{{ url_for('dashboard.restart') }}">↻ Redémarrer</a>
       {% else %}
-        <a class="btn primary ring" data-action="hit" data-url="{{ url_for('start') }}">● Démarrer</a>
+        <a class="btn primary ring" data-action="hit" data-url="{{ url_for('dashboard.start') }}">● Démarrer</a>
       {% endif %}
     </div>
   </div>
@@ -62,8 +62,8 @@
     <div class="row" style="justify-content:space-between; gap:10px; flex-wrap:wrap;">
       <div class="muted">Exporter/Restaurer la configuration du serveur.</div>
       <div class="row" style="gap:10px;">
-        <a class="btn" href="{{ url_for('server_conf_download') }}">⬇ Télécharger <span class="mono">wg0.conf</span></a>
-        <a class="btn ghost" href="{{ url_for('server_restore') }}">↩ Restaurer un backup</a>
+        <a class="btn" href="{{ url_for('server.conf_download') }}">⬇ Télécharger <span class="mono">wg0.conf</span></a>
+        <a class="btn ghost" href="{{ url_for('server.restore') }}">↩ Restaurer un backup</a>
       </div>
     </div>
   </div>

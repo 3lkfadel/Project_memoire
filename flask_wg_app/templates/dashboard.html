@@ -29,11 +29,11 @@
       <strong>Résumé système</strong>
       <div class="actions">
         {% if running %}
-          <a class="btn ghost" href="{{ url_for('stop') }}">Éteindre</a>
+          <a class="btn" href="{{ url_for('dashboard.stop') }}">Stop</a>
         {% else %}
-          <a class="btn ghost" href="{{ url_for('start') }}">Démarrer</a>
+          <a class="btn" href="{{ url_for('dashboard.start') }}">Start</a>
         {% endif %}
-        <a class="btn ghost" href="{{ url_for('restart') }}">↻ Redémarrer</a>
+        <a class="btn" href="{{ url_for('dashboard.restart') }}">Restart</a>
       </div>
     </div>
 
@@ -130,7 +130,7 @@
 
   async function tick(){
     try{
-      const r = await fetch('{{ url_for("metrics") }}');
+      const r = await fetch('{{ url_for("logs.metrics") }}');  // <-- corrigé
       if (!r.ok) return;
       const j = await r.json(); // {ts, rx, tx} cumulés
       if (last) {
